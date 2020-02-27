@@ -1,0 +1,139 @@
+---
+title: "DecontamWorkflow_Miseq401"
+author: "Erin Dahl"
+date: "2/20/2020"
+output: html_document
+---
+
+MiSeq401
+
+```{r}
+#load libraries
+library(phyloseq)
+library(dplyr)
+library(ggplot2)
+library(here)
+library(decontam)
+library(stringdist)
+library(RColorBrewer)
+library(tidyverse)
+
+#load data
+load("mockDilutions.RData")
+
+#remove unwanted variables step -> because there was no ps_clean vars to keep all data was kept
+# because no ps_clean created profile of only expected sequences from the undiluted mock community sample
+
+# Subset the undiluted mock microbial sample (sample name 'D0')
+#mock_ps_pure <- subset_samples(mock_ps, sample_names(mock_ps)=='D0')
+
+# Remove ASV's that are not present in the undiluted sample
+#mock_ps_pure <- prune_taxa(taxa_sums(mock_ps_pure)>0, mock_ps_pure)
+
+# Change the SampleType and sample_names of the pure mock microbial community sample 
+
+#sample_data(mock_ps_pure)$SampleType <- 'MockCommunityProfile'
+#sample_names(mock_ps_pure) <- paste ('mc', sample_names(mock_ps_pure), sep = '_')
+
+# display a summary of the new phyloseq object
+#mock_ps_pure
+
+# remove the unexpected ASVs from the undiluted mock microbial community dilution series
+
+# make a list of the top 9 abundant ASV taxa names (this is plausible for filtering since the 9 sequences we want to remove are present in low abundance)
+
+#mock_taxa = names(sort(taxa_sums(mock_ps_pure), decreasing = TRUE)[1:9])
+
+# subset the taxa in mock_ps_pure so only the expected sequences are present
+
+#mock_ps_pure <- prune_taxa(mock_taxa, mock_ps_pure)
+# removes unwanted OTUs
+
+```
+
+```{r }
+# display a summary of the mock community dilution series phyloseq object
+#mock_ps
+```
+
+```{r}
+# create a phyloseq object that is normalized to 100 (relative abundance)
+#ps_norm <- transform_sample_counts(ps,function(x) 100* x/sum(x))
+#mock_ps_norm <- transform_sample_counts(mock_ps,function(x) 100* x/sum(x))
+
+# Identify the proportion of each sample that is the expected mock community ASVs
+#ps_norm_exp <- prune_taxa(mock_taxa,ps_norm)
+```
+
+
+# Summarize/Review data
+
+``` {r}
+ps
+
+# SampleSums is the number of reads per sample, add this data to sample_data
+sample_data(ps)$SampleSums <- sample_sums(ps)
+
+# review sample types in dataset 
+table(sample_data(ps)$SampleType)
+
+# ggplot(sample_data(ps), aes(as.factor(SampleType), SampleSums)) + geom_boxplot()
+ggplot(sample_data(ps), aes(as.factor(SampleType), SampleSums)) + geom_boxplot() + xlab("Sample Type") + ylab("Sample Sums")
+```
+
+
+```{r}
+# Evaluate the number of reads per sample and DNA concentration by sample type
+ggplot(sample_data(ps), aes(x=SampleSums, color=SampleType)) +
+  geom_histogram(fill="white", alpha=0.5, position="identity")  +
+  facet_wrap("SampleType") +
+  ggtitle('Number of Reads per sample by sample type') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(sample_data(ps), aes(x=SampleSums, color=SampleType)) +
+  geom_histogram(fill="white", alpha=0.7, position="identity")  +
+  facet_wrap("SampleType") +
+  ggtitle('Number of Reads per sample by sample type') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r}
+ggplot(sample_data(ps), aes(x=DNA_conc, color=SampleType)) +
+  geom_histogram(fill="white", alpha=0.5, position="identity")  +
+  facet_wrap("SampleType") +
+  ggtitle('DNA concentration per sample by sample type') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r}
+ggplot(sample_data(ps), aes(x=DNA_conc, y = SampleSums, color=SampleType)) +
+  geom_point() +
+  facet_wrap("SampleType") +
+  ggtitle('Number of reads by DNA concentration per sample by sample type') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r}
+# Subset the undiluted mock microbial sample  (sample name 'D0')
+mock_ps_pure <- subset_samples(mock_ps, sample_names(mock_ps)=='D0')
+
+# Remove ASV's that are not present in the undiluted sample
+mock_ps_pure <- prune_taxa(taxa_sums(mock_ps_pure)>0, mock_ps_pure)
+
+mock_taxa <- taxa_names(mock_ps_pure)
+
+# identify if any expected ASVs are split into two (just one or two nt off)
+dist_mock_taxa <- stringdistmatrix(mock_taxa, method = 'lv')
+dist_mock_taxa[dist_mock_taxa<5]
+
+dist_mock_taxa
+
+```
+
+
+```{r}
+
+```
