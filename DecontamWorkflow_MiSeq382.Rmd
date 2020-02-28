@@ -37,17 +37,31 @@ mock_ps_pure
 ```
 
 ```{r}
-# handle extra ASVs??
+# handle extra ASVs
 mock_taxa<-as.matrix(mock_ps_pure@tax_table)
 temp_taxaNames<-rownames(mock_taxa)
-adist(temp_taxaNames)
+
+temp_taxaNamesMerged <- asv_key[asv_key$asv_name %in% temp_taxaNames,]
+
+temp_taxa_seq <- temp_taxaNamesMerged$asv_sequence
+
+adist(temp_taxa_seq)
 ```
-In the html example is was mostly numbers around 40-70 that showed up, need to check if this is still ok
+For the [8,3] and [3,8] there is only 1 nt difference so this needs to be examined
 
 ```{r}
 
-# remove the unexpected ASVs from the undiluted mock microbial community dilution series
+# identify number of sequences for each taxa
+mock_counts<-as.data.frame(mock_ps_pure@otu_table)
+# 
 
+# need to re-label or keep
+
+
+
+```
+
+```{r}
 # make a list of the top 9 abundant ASV taxa names (this is plausible for filtering since the 9 sequences we want to remove are present in low abundance)
 
 mock_taxa = names(sort(taxa_sums(mock_ps_pure), decreasing = TRUE)[1:9])

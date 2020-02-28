@@ -21,49 +21,8 @@ library(tidyverse)
 #load data
 load("mockDilutions.RData")
 
-#remove unwanted variables step -> because there was no ps_clean vars to keep all data was kept
-# because no ps_clean created profile of only expected sequences from the undiluted mock community sample
-
-# Subset the undiluted mock microbial sample (sample name 'D0')
-#mock_ps_pure <- subset_samples(mock_ps, sample_names(mock_ps)=='D0')
-
-# Remove ASV's that are not present in the undiluted sample
-#mock_ps_pure <- prune_taxa(taxa_sums(mock_ps_pure)>0, mock_ps_pure)
-
-# Change the SampleType and sample_names of the pure mock microbial community sample 
-
-#sample_data(mock_ps_pure)$SampleType <- 'MockCommunityProfile'
-#sample_names(mock_ps_pure) <- paste ('mc', sample_names(mock_ps_pure), sep = '_')
-
-# display a summary of the new phyloseq object
-#mock_ps_pure
-
-# remove the unexpected ASVs from the undiluted mock microbial community dilution series
-
-# make a list of the top 9 abundant ASV taxa names (this is plausible for filtering since the 9 sequences we want to remove are present in low abundance)
-
-#mock_taxa = names(sort(taxa_sums(mock_ps_pure), decreasing = TRUE)[1:9])
-
-# subset the taxa in mock_ps_pure so only the expected sequences are present
-
-#mock_ps_pure <- prune_taxa(mock_taxa, mock_ps_pure)
-# removes unwanted OTUs
-
 ```
 
-```{r }
-# display a summary of the mock community dilution series phyloseq object
-#mock_ps
-```
-
-```{r}
-# create a phyloseq object that is normalized to 100 (relative abundance)
-#ps_norm <- transform_sample_counts(ps,function(x) 100* x/sum(x))
-#mock_ps_norm <- transform_sample_counts(mock_ps,function(x) 100* x/sum(x))
-
-# Identify the proportion of each sample that is the expected mock community ASVs
-#ps_norm_exp <- prune_taxa(mock_taxa,ps_norm)
-```
 
 
 # Summarize/Review data
@@ -126,14 +85,136 @@ mock_ps_pure <- prune_taxa(taxa_sums(mock_ps_pure)>0, mock_ps_pure)
 mock_taxa <- taxa_names(mock_ps_pure)
 
 # identify if any expected ASVs are split into two (just one or two nt off)
-dist_mock_taxa <- stringdistmatrix(mock_taxa, method = 'lv')
-dist_mock_taxa[dist_mock_taxa<5]
 
-dist_mock_taxa
+mock_taxa<-rownames(as.matrix(mock_ps_pure@tax_table))
+
+temp_taxaNamesMerged <- asv_key[asv_key$asv_name %in% mock_taxa,]
+
+temp_taxa_seq <- temp_taxaNamesMerged$asv_sequence
+
+adist(temp_taxa_seq)
+
 
 ```
 
 
 ```{r}
+# Normalize the mock microbial sequences to 100 to identify the % of contaminants in the dilution series
+mock_ps_norm <- transform_sample_counts(mock_ps,function(x) 100* x/sum(x))
+
+# Plot the expected mock microbial communtiy sequences from the mock microbial community dilution series
+mock_ps_norm_exp <- prune_taxa(mock_taxa,mock_ps_norm)
+plot_bar(mock_ps_norm_exp,fill = 'Genus') + theme(legend.position='none')
+```
+
+
+
+```{r}
+# Normalize the full dataset to relative abunance
+ps_norm <- transform_sample_counts(ps,function(x) 100* x/sum(x))
 
 ```
+
+Define functions for evaluating decontam
+```{r}
+ expCompBarPlot <- function(physeq, exp_taxa, title){
+   ## physeq - phyloseq object that will be plotted
+   ## exp_taxa - taxa that are expected to be in the mock community 
+   ## title - title for plot
+   
+#set up data_table
+  data_table <- as.data.frame(t(physeq@otu_table))
+
+  data_table$reference = FALSE
+  data_table$reference[rownames(data_table) %in% exp_taxa] = TRUE
+  sample_names <- sample_names(physeq)
+  data_table$id <- paste0('ASV_', 1:nrow(data_table))
+  dilution_labels <- sample_data(physeq)$Dilutions
+
+
+# define the colors to use for reference and non-reference OTUs/ASVs
+  set.seed(444)
+  ref_colors <- brewer.pal(sum(data_table$reference), "Paired")
+  other_colors <- sample(grey.colors(5, start = 0.5, end = 0.9), sum(!data_table$reference), replace = TRUE)
+
+# add a color variable to the data table
+  data_table$color <- rep(NA, nrow(data_table))
+  data_table$color[data_table$reference] <- ref_colors
+  data_table$color[!data_table$reference] <- other_colors
+
+# reshape the data table into a ggplot-friendly format, by gathering samples into a single column called "count"
+
+  color_gg <- data_table %>% select(id, sample_names, color) %>% gather("sample", "count", sample_names)
+  legend_color <- c(bright = ref_colors[2], dull = other_colors[2])
+  data_gg <- data_table %>% gather("sample", "count", sample_names)
+
+  data_gg <- inner_join(data_gg,color_gg)
+
+# create the composition bar plot
+  comp_bar <- ggplot(data_gg, aes(x = sample, y = count)) +
+    geom_col(aes(fill = color, group = reference, alpha = ifelse(reference, "bright", "dull")), width = 0.7, position = position_fill()) +
+    scale_fill_identity(guide = FALSE) +
+    scale_alpha_manual(name = "Sequence type",
+                     labels = c("expected sequences", "other"),
+                     values = c(bright = 1, dull = 1),
+                     guide = guide_legend(override.aes = list(fill = c(ref_colors[4], "#AEAEAE")),
+                                          keywidth = NULL, keyheight = NULL)) +
+    labs(title = title, x = "sample", y = "Relative Abundance") +
+    theme(legend.position = "right", legend.title = element_text(size = 12),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 16),
+        plot.title = element_text(size = 16))
+  comp_bar
+}
+```
+
+## Decontam - frequency method
+
+Test levels of decontam to remove contaminants
+
+```{r}
+decontamTestFreq <- function(physeq, exp_taxa, thr){
+  contam.freq <- isContaminant(physeq, method="frequency", threshold=thr, conc="DNA_conc")
+  print(table(contam.freq$contaminant))
+  ps.noncontam.freq <- prune_taxa(!contam.freq$contaminant, physeq)
+  mock_test <- subset_samples(ps.noncontam.freq,SampleType== 'MockCommunity') ##check if this function change is valid for the mock community
+  expCompBarPlot(mock_test, exp_taxa,paste('Mock community decontam results \n frequency method threshold = ',thr))
+
+}
+
+decontamTestFreq(ps,mock_taxa, 0)
+```
+
+```{r}
+
+decontamTestFreq(ps,mock_taxa, 0.1)
+```
+
+##Function for comparing frequency Thresholds with plot of ASV's removed
+
+```{r}
+decontamFreq <- function(physeq){
+  
+  freqVector = c()
+  thrVector <- seq(.1, .9, by=0.1)
+  
+  for ( i in 1:9)
+  {
+    contam.freq <- isContaminant(physeq, method="frequency", threshold=thrVector[i], conc="DNA_conc") 
+    #print(table(contam.freq$contaminant))
+    #print(sum(contam.freq$contaminant == TRUE))
+    freqVector[i] <- sum(contam.freq$contaminant == TRUE)
+  }
+  
+  asvFreqSums <- data.frame (freqVector, thrVector)
+  
+  
+  ggplot(asvFreqSums, aes(x = thrVector, y = freqVector))+ geom_bar(stat="identity", fill="steelblue", position = position_dodge() ) + theme_minimal() + labs (x = "Decontam Threshold", y = "Number ASVs identified as contaminants") + scale_x_discrete(limits = thrVector) 
+ 
+}
+
+decontamFreq(ps)
+```
+
+# Working on function implementation
+
