@@ -17,12 +17,21 @@ library(decontam)
 library(stringdist)
 library(RColorBrewer)
 library(tidyverse)
-
-#load data
-load("mockDilutions.RData")
-
+library(stringdist)
 ```
 
+Load data through path
+```{r}
+# load path
+ps_path <- here('mockDilutions.RData')
+
+if(file.exists(ps_path)){
+  load(ps_path) 
+} else {
+  stop(paste('Cannot find data, please check path ',ps_path )) 
+}
+
+```
 
 
 # Summarize/Review data
@@ -30,31 +39,76 @@ load("mockDilutions.RData")
 ``` {r}
 ps
 
+samColNames <- ps@sam_data@names
+
+# Checks to make sure col headers for SampleType/Origin is consistent and changes it if needed to Sample Origin
+
+# string function to make sample name all lower case
+# error message indicating 
+# reassign var names
+
+if (!('Sample_Origin' %in% samColNames)) {
+  print(paste("Sample Origin from sam data not identified, please assign to temp char variable __ "))
+  
+  sampleOriginName = "SampleType"
+  #Renames SampleType to Sample_Origin
+  #samColNames <- str_replace(samColNames, "SampleType", "Sample_Origin")
+  #ps@sam_data@names <- samColNames
+}
+
 # SampleSums is the number of reads per sample, add this data to sample_data
 sample_data(ps)$SampleSums <- sample_sums(ps)
 
 # review sample types in dataset 
 table(sample_data(ps)$SampleType)
-
-# ggplot(sample_data(ps), aes(as.factor(SampleType), SampleSums)) + geom_boxplot()
-ggplot(sample_data(ps), aes(as.factor(SampleType), SampleSums)) + geom_boxplot() + xlab("Sample Type") + ylab("Sample Sums")
 ```
 
+A faceted plot of number of reads per sample per sample type/ sample origin
 
 ```{r}
-# Evaluate the number of reads per sample and DNA concentration by sample type
+# ggplot(sample_data(ps), aes(as.factor(SampleType), SampleSums)) + geom_boxplot()
+ggplot(sample_data(ps), aes(as.factor(sampleOriginName), SampleSums)) + geom_boxplot(aes(fill= as.name("sampleOriginName"))) + xlab("Sample Origin") + ylab("Sample Sums") 
+
+```
+
+```{r}
+ggplot(sample_data(ps), aes(as.factor(SampleType), SampleSums)) + geom_boxplot(aes(fill=SampleType),) + xlab("Sample Type") + ylab("Sample Sums") + geom_dotplot(binaxis='y', stackdir='center',
+                 position=position_dodge(1))
+
+# add binwidth arg to geom_dotplot to get rid of warning. It will make the dots much smaller
+```
+
+A boxplot (or similar) of number of  reads per sample per sample type/ sample origin
+
+```{r}
+# Evaluate the number of reads per sample
+ggplot(sample_data(ps), aes(x=SampleSums, color=SampleType)) +
+  geom_histogram(fill="white", alpha=0.5, position="identity")  +
+  ggtitle('Number of Reads per sample by sample type') +
+  theme(plot.title = element_text(hjust = 0.5)) + xlab("Sample sums") + ylab("Count")
+```
+
+```{r}
 ggplot(sample_data(ps), aes(x=SampleSums, color=SampleType)) +
   geom_histogram(fill="white", alpha=0.5, position="identity")  +
   facet_wrap("SampleType") +
   ggtitle('Number of Reads per sample by sample type') +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme(plot.title = element_text(hjust = 0.5)) + xlab("Sample sums") + ylab("Count")
+```
 
-ggplot(sample_data(ps), aes(x=SampleSums, color=SampleType)) +
-  geom_histogram(fill="white", alpha=0.7, position="identity")  +
-  facet_wrap("SampleType") +
-  ggtitle('Number of Reads per sample by sample type') +
-  theme(plot.title = element_text(hjust = 0.5))
+A faceted plot of number of the DNA concentration per sample type/ sample origin
+```{r}
+ggplot(sample_data(ps), aes(as.factor(SampleType), DNA_conc)) + geom_boxplot(aes(fill=SampleType)) + xlab("Sample Type") + ylab("DNA concentration") 
 
+```
+
+A boxplot (or similar) of of the DNA concentration per sample type/ sample origin
+
+```{r}
+ggplot(sample_data(ps), aes(x=DNA_conc, color=SampleType)) +
+  geom_histogram(fill="white", alpha=0.5, position="identity")  +
+  ggtitle('DNA concentration per sample by sample type') +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 ```{r}
@@ -65,6 +119,13 @@ ggplot(sample_data(ps), aes(x=DNA_conc, color=SampleType)) +
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
+Number of reads by DNA concentration per sample by sample type
+
+```{r}
+ggplot(sample_data(ps), aes(x=DNA_conc, y = SampleSums, color=SampleType)) +
+  geom_point() + ggtitle('Number of reads by DNA concentration per sample by sample type') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
 
 ```{r}
 ggplot(sample_data(ps), aes(x=DNA_conc, y = SampleSums, color=SampleType)) +
@@ -193,7 +254,9 @@ decontamTestFreq(ps,mock_taxa, 0.1)
 ##Function for comparing frequency Thresholds with plot of ASV's removed
 
 ```{r}
-decontamFreq <- function(physeq){
+#Function Erin Wrote for comparing frequency thresholds with plot of ASV's removed
+
+decontamFreqThrCounts <- function(physeq){
   
   freqVector = c()
   thrVector <- seq(.1, .9, by=0.1)
@@ -213,8 +276,38 @@ decontamFreq <- function(physeq){
  
 }
 
-decontamFreq(ps)
+decontamFreqThrCounts(ps)
 ```
 
-# Working on function implementation
+##Function for comparing frequency Thresholds with plot of ASV's removed
+
+```{r}
+#Function Erin Wrote for comparing frequency thresholds with plot of percent ASV's removed
+
+decontamFreqThrPercents <- function(physeq){
+  
+  freqVector = c()
+  thrVector <- seq(.1, .9, by=0.1)
+  totalTaxa <- ntaxa(physeq)
+  
+  for ( i in 1:9)
+  {
+    contam.freq <- isContaminant(physeq, method="frequency", threshold=thrVector[i], conc="DNA_conc") 
+    #print(table(contam.freq$contaminant))
+    #print(sum(contam.freq$contaminant == TRUE))
+    freqVector[i] <- (sum(contam.freq$contaminant == TRUE) / totalTaxa)
+  }
+  
+  asvFreqSums <- data.frame (freqVector, thrVector)
+  
+  
+  ggplot(asvFreqSums, aes(x = thrVector, y = freqVector))+ geom_bar(stat="identity", fill="steelblue", position = position_dodge() ) + theme_minimal() + labs (x = "Decontam Threshold", y = "Percent ASVs identified as contaminants") + scale_x_discrete(limits = thrVector) #+ scale_y_continuous(limits=c(0, 100))
+  
+  #add limit y axis 100
+ 
+}
+
+decontamFreqThrPercents(ps)
+```
+
 

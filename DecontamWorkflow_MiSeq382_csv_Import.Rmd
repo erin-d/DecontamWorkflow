@@ -1,0 +1,90 @@
+---
+title: "DecontamWorkflow_MiSeq382_csv_Import"
+author: "Erin Dahl"
+date: "3/3/2020"
+output: html_document
+---
+
+## Set Workspace
+
+```{r set workspace, message=FALSE}
+# load libraries
+
+library(phyloseq)
+library(ggplot2)
+library(decontam)
+library(tidyverse)
+library(patchwork)
+
+## Load the dataset
+load("mockDilutions.RData")
+mockdata <- read.csv("mockTopNine.csv")
+```
+
+Ignore Chunck Below
+```{r}
+# profile of only expected sequences from the undiluted mock community sample
+
+mockdata <- read.csv("mockpuredata.csv")
+
+# format data for conversion to phloseq object
+otu_mat <- as.matrix (c(mockdata$mc_D0))
+rownames(otu_mat) <- mockdata$asv_name
+
+mock_pure_otu <- otu_table(otu_mat, taxa_are_rows= TRUE)
+
+tax_mat <- as.matrix (mockdata[,3:8])
+rownames(tax_mat) <- mockdata$asv_name
+
+mock_pure_tax <-tax_table(tax_mat)
+
+# create phyloseq object
+mock_ps_pure <- phyloseq(mock_pure_otu, mock_pure_tax)
+
+mock_pure_asv_key <-c(mockdata$asv_name, mockdata$asv_sequence)
+
+mock_ps_pure
+```
+
+```{r}
+# Subset the undiluted mock microbial sample  (sample name 'D0')
+mock_ps_pure <- subset_samples(mock_ps, sample_names(mock_ps)=='D0')
+
+# Remove ASV's that are not present in the undiluted sample
+mock_ps_pure <- prune_taxa(taxa_sums(mock_ps_pure)>0, mock_ps_pure)
+
+# Change the SampleType and sample_names of the pure mock microbial community sample 
+
+sample_data(mock_ps_pure)$SampleType <- 'MockCommunityProfile'
+sample_names(mock_ps_pure) <- paste ('mc', sample_names(mock_ps_pure), sep = '_')
+
+# display a summary of the new phyloseq object
+mock_ps_pure
+```
+
+
+
+```{r}
+mock_taxa<-as.matrix(mock_ps_pure@tax_table)
+
+mock_taxa = names(sort(taxa_sums(mock_ps_pure), decreasing = TRUE))
+
+# create a phyloseq object that is normalized to 100 (relative abundance)
+ps_norm <- transform_sample_counts(ps,function(x) 100* x/sum(x))
+mock_ps_norm <- transform_sample_counts(mock_ps,function(x) 100* x/sum(x))
+
+# Identify the proportion of each sample that is the expected mock community ASVs
+ps_norm_exp <- prune_taxa(mock_taxa, ps_norm)
+
+
+# Identify the proportion of each sample that is the expected mock community ASVs
+ps_norm_exp <- prune_taxa(mock_taxa,ps_norm)
+
+# Create a table with the dilution, number of reads per sample, and proportion of contaminants per sample
+dilutionSummary <- data.frame(DilutionSeries = sample_names(ps),NumberOfReads = sample_sums(ps), PercentContaminants = 100-sample_sums(ps_norm_exp))
+
+```
+
+```{r }
+plot_bar(mock_ps_norm,fill='Genus', title = 'Mock Micribial Community Sequences')+theme(legend.position='none')
+```
